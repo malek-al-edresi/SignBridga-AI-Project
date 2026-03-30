@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="SignBridga AI — Real-time sign language detection and translation using AI. Breaks communication barriers by converting hand gestures into text and speech instantly in your browser.">
+    <meta name="keywords" content="sign language, AI, hand gesture recognition, accessibility, MediaPipe, real-time translation">
+    <meta name="author" content="SignBridga AI Team">
+    <title>SignBridga AI — Real-Time Sign Language Translator</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <!-- ===== NAVBAR ===== -->
+    <nav class="navbar" id="navbar">
+        <div class="navbar-container">
+            <a href="#" class="navbar-logo">
+                <span class="logo-icon">🤟</span>
+                <span class="logo-text">Sign<span class="logo-highlight">Bridga</span> AI</span>
+            </a>
+            <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
+                <span></span><span></span><span></span>
+            </button>
+            <ul class="nav-links" id="navLinks">
+                <li><a href="#hero" class="nav-link active">Home</a></li>
+                <li><a href="#translator" class="nav-link">Translator</a></li>
+                <li><a href="#features" class="nav-link">Features</a></li>
+                <li><a href="#gestures" class="nav-link">Gestures</a></li>
+                <li><a href="#about" class="nav-link">About</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- ===== HERO SECTION ===== -->
+    <section class="hero" id="hero">
+        <div class="hero-bg-shapes">
+            <div class="shape shape-1"></div>
+            <div class="shape shape-2"></div>
+            <div class="shape shape-3"></div>
+        </div>
+        <div class="hero-container">
+            <div class="hero-badge">🚀 AI-Powered Communication</div>
+            <h1 class="hero-title">
+                Breaking <span class="gradient-text">Communication Barriers</span> with AI
+            </h1>
+            <p class="hero-subtitle">
+                SignBridga AI uses your camera to detect sign language gestures in real time
+                and translates them into text and speech — instantly, privately, and entirely in your browser.
+            </p>
+            <div class="hero-actions">
+                <a href="#translator" class="btn btn-primary" id="heroStartBtn">
+                    <span class="btn-icon">🎥</span> Start Translating
+                </a>
+                <a href="#about" class="btn btn-secondary">Learn More</a>
+            </div>
+            <div class="hero-stats">
+                <div class="stat">
+                    <span class="stat-number">8+</span>
+                    <span class="stat-label">Gestures</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-number">&lt;1s</span>
+                    <span class="stat-label">Latency</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-number">100%</span>
+                    <span class="stat-label">In-Browser</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== LIVE TRANSLATOR SECTION ===== -->
+    <section class="translator-section" id="translator">
+        <div class="section-container">
+            <div class="section-header">
+                <span class="section-badge">Live Translation</span>
+                <h2 class="section-title">Real-Time Sign Language Translator</h2>
+                <p class="section-desc">Position your hand clearly in front of the camera. Hold a gesture steadily for accurate detection.</p>
+            </div>
+
+            <div class="translator-grid">
+                <!-- Camera Panel -->
+                <div class="camera-panel">
+                    <div class="camera-viewport" id="cameraViewport">
+                        <video id="cameraFeed" autoplay playsinline></video>
+                        <canvas id="landmarkCanvas"></canvas>
+                        <div class="camera-placeholder" id="cameraPlaceholder">
+                            <div class="placeholder-icon">📷</div>
+                            <p>Click <strong>Start Camera</strong> to begin</p>
+                            <p class="placeholder-hint">or try <strong>Demo Mode</strong> without a camera</p>
+                        </div>
+                        <div class="detection-indicator" id="detectionIndicator">
+                            <span class="detection-dot"></span>
+                            <span id="detectionStatusText">Waiting...</span>
+                        </div>
+                    </div>
+                    <div class="camera-controls">
+                        <button class="btn btn-primary btn-control" id="startCameraBtn">
+                            <span class="btn-icon">▶</span> Start Camera
+                        </button>
+                        <button class="btn btn-danger btn-control" id="stopCameraBtn" disabled>
+                            <span class="btn-icon">⏹</span> Stop
+                        </button>
+                        <button class="btn btn-secondary btn-control" id="demoModeBtn">
+                            <span class="btn-icon">🎭</span> Demo Mode
+                        </button>
+                        <button class="btn btn-ghost btn-control" id="clearBtn">
+                            <span class="btn-icon">🗑</span> Clear
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Results Panel -->
+                <div class="results-panel">
+                    <!-- Current Gesture Card -->
+                    <div class="result-card gesture-card" id="gestureCard">
+                        <div class="card-header">
+                            <span class="card-icon">✋</span>
+                            <span class="card-title">Detected Gesture</span>
+                        </div>
+                        <div class="gesture-display" id="gestureDisplay">
+                            <span class="gesture-emoji" id="gestureEmoji">—</span>
+                            <span class="gesture-label" id="gestureLabel">No gesture detected</span>
+                        </div>
+                        <div class="confidence-bar-container">
+                            <div class="confidence-label">
+                                <span>Stability</span>
+                                <span id="confidenceValue">0%</span>
+                            </div>
+                            <div class="confidence-bar">
+                                <div class="confidence-fill" id="confidenceFill"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Translated Text Card -->
+                    <div class="result-card text-card">
+                        <div class="card-header">
+                            <span class="card-icon">💬</span>
+                            <span class="card-title">Translated Text</span>
+                            <button class="btn-icon-action" id="speakAllBtn" title="Speak all text">🔊</button>
+                        </div>
+                        <div class="translated-text" id="translatedText">
+                            <span class="text-placeholder">Detected gestures will appear here as text...</span>
+                        </div>
+                    </div>
+
+                    <!-- Refine with AI Card -->
+                    <div class="result-card ai-card">
+                        <div class="card-header">
+                            <span class="card-icon">🤖</span>
+                            <span class="card-title">AI Text Refinement</span>
+                            <span class="badge badge-optional">Optional</span>
+                        </div>
+                        <p class="ai-description">Refine detected gestures into a natural sentence using DeepSeek AI.</p>
+                        <button class="btn btn-accent btn-sm" id="refineBtn" disabled>
+                            <span class="btn-icon">✨</span> Refine with AI
+                        </button>
+                        <div class="refined-output" id="refinedOutput"></div>
+                    </div>
+
+                    <!-- Speech Log Card -->
+                    <div class="result-card log-card">
+                        <div class="card-header">
+                            <span class="card-icon">📝</span>
+                            <span class="card-title">Speech Log</span>
+                        </div>
+                        <ul class="speech-log" id="speechLog">
+                            <li class="log-placeholder">Spoken words will be logged here...</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== FEATURES SECTION ===== -->
+    <section class="features-section" id="features">
+        <div class="section-container">
+            <div class="section-header">
+                <span class="section-badge">Why SignBridga?</span>
+                <h2 class="section-title">Powerful Features for Accessible Communication</h2>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h3>Real-Time Detection</h3>
+                    <p>MediaPipe Hands processes each frame in milliseconds, providing instant gesture recognition with no noticeable delay.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🔊</div>
+                    <h3>Voice Output</h3>
+                    <p>Detected gestures are spoken aloud using the browser's built-in SpeechSynthesis API — no external services required.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🌐</div>
+                    <h3>No Installation</h3>
+                    <p>Runs entirely in the browser. No downloads, no plugins, no backend servers. Just open the page and start signing.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🔒</div>
+                    <h3>Privacy-First</h3>
+                    <p>All hand tracking and gesture recognition happens locally on your device. Your camera feed never leaves your browser.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📱</div>
+                    <h3>Fully Responsive</h3>
+                    <p>Optimized layout for mobile phones, tablets, and desktops. Use it on any device with a camera and a modern browser.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🎓</div>
+                    <h3>Educational Value</h3>
+                    <p>Includes a gesture glossary and demo mode — perfect for learning sign language basics and classroom demonstrations.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== GESTURES GLOSSARY SECTION ===== -->
+    <section class="gestures-section" id="gestures">
+        <div class="section-container">
+            <div class="section-header">
+                <span class="section-badge">Gesture Guide</span>
+                <h2 class="section-title">Supported Gestures</h2>
+                <p class="section-desc">These are the gestures currently recognized by SignBridga AI. Hold each gesture steadily in front of the camera for best results.</p>
+            </div>
+            <div class="gestures-grid">
+                <div class="gesture-info-card">
+                    <div class="gesture-info-emoji">👋</div>
+                    <h4>Hello</h4>
+                    <p>Open hand with all five fingers extended and spread apart.</p>
+                    <span class="gesture-tag">Open Palm</span>
+                </div>
+                <div class="gesture-info-card">
+                    <div class="gesture-info-emoji">👍</div>
+                    <h4>Yes</h4>
+                    <p>Thumbs up — only the thumb is extended upward, all other fingers curled.</p>
+                    <span class="gesture-tag">Thumb Up</span>
+                </div>
+                <div class="gesture-info-card">
+                    <div class="gesture-info-emoji">👎</div>
+                    <h4>No</h4>
+                    <p>Thumbs down — only the thumb is extended downward, all other fingers curled.</p>
+                    <span class="gesture-tag">Thumb Down</span>
+                </div>
+                <div class="gesture-info-card">
+                    <div class="gesture-info-emoji">🆘</div>
+                    <h4>Help</h4>
+                    <p>Closed fist with only the thumb raised on a flat palm — the ASL sign for "help."</p>
+                    <span class="gesture-tag">Fist + Thumb</span>
+                </div>
+                <div class="gesture-info-card">
+                    <div class="gesture-info-emoji">🙏</div>
+                    <h4>Thank You</h4>
+                    <p>Flat hand with fingers together, slight forward tilt from the chin area.</p>
+                    <span class="gesture-tag">Flat Hand Forward</span>
+                </div>
+                <div class="gesture-info-card">
+                    <div class="gesture-info-emoji">🤟</div>
+                    <h4>I Love You</h4>
+                    <p>Thumb, index finger, and pinky extended. Middle and ring fingers curled in.</p>
+                    <span class="gesture-tag">ILY Sign</span>
+                </div>
+                <div class="gesture-info-card">
+                    <div class="gesture-info-emoji">✋</div>
+                    <h4>Stop</h4>
+                    <p>Palm facing forward with all fingers together and extended — a "halt" signal.</p>
+                    <span class="gesture-tag">Palm Forward</span>
+                </div>
+                <div class="gesture-info-card">
+                    <div class="gesture-info-emoji">✌️</div>
+                    <h4>Peace</h4>
+                    <p>Index and middle fingers extended in a V shape, all other fingers curled.</p>
+                    <span class="gesture-tag">V Sign</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== ABOUT / PRESENTATION SECTION ===== -->
+    <section class="about-section" id="about">
+        <div class="section-container">
+            <div class="section-header">
+                <span class="section-badge">About the Project</span>
+                <h2 class="section-title">Why SignBridga AI Matters</h2>
+            </div>
+
+            <div class="about-grid">
+                <div class="about-card about-problem">
+                    <div class="about-icon">🔴</div>
+                    <h3>The Problem</h3>
+                    <p>Over <strong>70 million deaf people</strong> worldwide use sign language as their primary communication method. Yet most hearing people don't understand sign language, creating a massive communication gap in daily life — at hospitals, schools, workplaces, and public services.</p>
+                </div>
+                <div class="about-card about-solution">
+                    <div class="about-icon">🟢</div>
+                    <h3>Our Solution</h3>
+                    <p>SignBridga AI bridges this gap by providing <strong>instant, free, browser-based</strong> sign language translation. No app installation, no paid subscriptions, no special hardware — just open the website, turn on your camera, and start communicating.</p>
+                </div>
+                <div class="about-card about-benefit">
+                    <div class="about-icon">🏥</div>
+                    <h3>Community Impact</h3>
+                    <p>Hospitals can communicate with deaf patients. Schools can include deaf students more effectively. Customer service centers can serve all customers equally. <strong>SignBridga AI makes accessibility free and universal.</strong></p>
+                </div>
+                <div class="about-card about-innovation">
+                    <div class="about-icon">💡</div>
+                    <h3>What's New</h3>
+                    <p>Unlike expensive commercial solutions, SignBridga AI runs <strong>entirely in the browser</strong> using MediaPipe AI — no servers processing your video, no data leaving your device, and no cost to the user. Privacy and accessibility by design.</p>
+                </div>
+            </div>
+
+            <!-- Project Details for Presentation -->
+            <div class="presentation-block">
+                <h3 class="presentation-title">📊 Project at a Glance</h3>
+                <div class="presentation-grid">
+                    <div class="presentation-item">
+                        <h4>🛠 Tools & Technologies</h4>
+                        <ul>
+                            <li>HTML5, CSS3, JavaScript (ES6+)</li>
+                            <li>MediaPipe Hands (Google)</li>
+                            <li>Web Speech API</li>
+                            <li>PHP (secure API proxy)</li>
+                            <li>InfinityFree Hosting</li>
+                        </ul>
+                    </div>
+                    <div class="presentation-item">
+                        <h4>📅 Development Timeline</h4>
+                        <ul>
+                            <li><strong>Week 1:</strong> Research & Architecture Design</li>
+                            <li><strong>Week 2:</strong> UI/UX Design & HTML/CSS</li>
+                            <li><strong>Week 3:</strong> Camera Integration & MediaPipe</li>
+                            <li><strong>Week 4:</strong> Gesture Recognition & Speech</li>
+                            <li><strong>Week 5:</strong> Testing, Polish & Deployment</li>
+                        </ul>
+                    </div>
+                    <div class="presentation-item">
+                        <h4>💰 Cost & Investment Value</h4>
+                        <ul>
+                            <li>Zero hosting cost (InfinityFree)</li>
+                            <li>Zero API cost for core features</li>
+                            <li>No specialized hardware required</li>
+                            <li>Open-source and extensible</li>
+                            <li>Scalable to more gestures</li>
+                        </ul>
+                    </div>
+                    <div class="presentation-item">
+                        <h4>🎯 Key Outcomes</h4>
+                        <ul>
+                            <li>Real-time gesture detection &lt;1 s</li>
+                            <li>8 core gestures recognized</li>
+                            <li>Voice output via browser TTS</li>
+                            <li>Works on any modern device</li>
+                            <li>100% client-side privacy</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== FOOTER ===== -->
+    <footer class="footer" id="footer">
+        <div class="footer-container">
+            <div class="footer-top">
+                <div class="footer-brand">
+                    <span class="logo-icon">🤟</span>
+                    <span class="logo-text">Sign<span class="logo-highlight">Bridga</span> AI</span>
+                    <p class="footer-tagline">Breaking communication barriers with artificial intelligence.</p>
+                </div>
+                <div class="footer-links">
+                    <a href="#hero">Home</a>
+                    <a href="#translator">Translator</a>
+                    <a href="#features">Features</a>
+                    <a href="#gestures">Gestures</a>
+                    <a href="#about">About</a>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 SignBridga AI. Built for academic purposes. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- ===== SCRIPTS ===== -->
+    <!-- MediaPipe Hands via CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1675466124/drawing_utils.min.js"></script>
+
+    <!-- App Logic -->
+    <script src="app.js"></script>
+</body>
+</html>
