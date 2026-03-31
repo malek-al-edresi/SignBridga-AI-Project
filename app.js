@@ -47,10 +47,10 @@
         stream: null,
         hands: null,
         animationId: null,
-        // Stabilization
+        // Stabilization (DEMO-OPTIMIZED: tiny buffer for instant response)
         buffer: [],
-        bufferSize: 5,
-        requiredAgreement: 3,
+        bufferSize: 3,
+        requiredAgreement: 2,
         lastStableGesture: null,
         speechCooldown: false,
         cooldownMs: 800,
@@ -70,15 +70,11 @@
     // ─────────────────────────────────────────────
     // 3. Gesture Definitions
     // ─────────────────────────────────────────────
+    // DEMO-OPTIMIZED: Only 3 core gestures for fast, forgiving recognition
     const GESTURES = {
-        hello:      { label: 'Hello',       emoji: '👋',  description: 'Open hand, all fingers extended' },
+        hello:      { label: 'Hello',       emoji: '👋',  description: 'Open hand, fingers extended' },
         yes:        { label: 'Yes',         emoji: '👍',  description: 'Thumbs up' },
-        no:         { label: 'No',          emoji: '👎',  description: 'Thumbs down' },
-        help:       { label: 'Help',        emoji: '🆘',  description: 'Fist with thumb raised on palm' },
-        thankyou:   { label: 'Thank You',   emoji: '🙏',  description: 'Flat hand forward' },
-        iloveyou:   { label: 'I Love You',  emoji: '🤟',  description: 'Thumb + index + pinky extended' },
-        stop:       { label: 'Stop',        emoji: '✋',  description: 'Palm forward, fingers together' },
-        peace:      { label: 'Peace',       emoji: '✌️',  description: 'V sign — index + middle up' },
+        no:         { label: 'No',          emoji: '👎',  description: 'Closed fist / thumbs down' },
     };
 
     // MediaPipe landmark indices
@@ -90,39 +86,22 @@
     // Pinky:  17-20
 
     // ─────────────────────────────────────────────
-    // 4. Landmark Utility Functions
+    // 4. Landmark Utility Functions (DEMO-OPTIMIZED)
+    //    Removed: dist, palmSize, areFingersSpread,
+    //    areFingersTogether, isFingerPartiallyCurled
+    //    Kept only simple finger-state checks.
     // ─────────────────────────────────────────────
 
     /**
-     * Calculate Euclidean distance between two landmarks.
-     */
-    function dist(a, b) {
-        return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + ((a.z || 0) - (b.z || 0)) ** 2);
-    }
-
-    /**
-     * Compute palm size for distance normalization.
-     * Uses wrist (0) to middle-finger MCP (9) as reference.
-     */
-    function palmSize(landmarks) {
-        return dist(landmarks[0], landmarks[9]) || 0.001; // avoid div-by-zero
-    }
-
-    /**
-     * Determine if a finger is extended.
-     * For thumb: uses joint-chain direction (TIP farther from MCP than IP is from MCP).
-     * For other fingers: compare TIP y < PIP y.
+     * DEMO-OPTIMIZED: Simple finger extension check.
+     * Thumb: TIP.y < IP.y (relaxed with +0.05 tolerance).
+     * Others: TIP.y < PIP.y + 0.05 (very forgiving).
      */
     function isFingerExtended(landmarks, finger) {
         if (finger === 'thumb') {
-            const cmc = landmarks[1];
-            const mcp = landmarks[2];
             const ip  = landmarks[3];
             const tip = landmarks[4];
-            // Thumb is extended when TIP is farther from CMC than IP is
-            const tipDist = dist(tip, cmc);
-            const ipDist  = dist(ip, cmc);
-            return tipDist > ipDist;
+            return tip.y < ip.y + 0.05;
         }
 
         const tipIndices = { index: 8, middle: 12, ring: 16, pinky: 20 };
@@ -131,8 +110,8 @@
         const tip = landmarks[tipIndices[finger]];
         const pip = landmarks[pipIndices[finger]];
 
-        // In normalized coords, y=0 is top of image, so extended = tip.y < pip.y
-        return tip.y < pip.y;
+        // RELAXED: +0.05 tolerance for imperfect hand positions
+        return tip.y < pip.y + 0.05;
     }
 
     /**
@@ -144,38 +123,17 @@
         return thumbTip.y < thumbMcp.y; // tip above MCP = up
     }
 
-    /**
-     * Check if fingers are spread apart (normalized by palm size).
-     */
-    function areFingersSpread(landmarks) {
-        const ps = palmSize(landmarks);
-        const d1 = dist(landmarks[8], landmarks[12]) / ps;
-        const d2 = dist(landmarks[12], landmarks[16]) / ps;
-        const d3 = dist(landmarks[16], landmarks[20]) / ps;
-
-        return (d1 > 0.15 && d2 > 0.12 && d3 > 0.12);
-    }
-
-    /**
-     * Check if fingers are close together (normalized by palm size).
-     */
-    function areFingersTogether(landmarks) {
-        const ps = palmSize(landmarks);
-        const d1 = dist(landmarks[8], landmarks[12]) / ps;
-        const d2 = dist(landmarks[12], landmarks[16]) / ps;
-        const d3 = dist(landmarks[16], landmarks[20]) / ps;
-
-        return (d1 < 0.22 && d2 < 0.22 && d3 < 0.22);
-    }
-
     // ─────────────────────────────────────────────
-    // 5. Gesture Recognition Engine
+    // 5. Gesture Recognition Engine (DEMO-OPTIMIZED)
+    //    Only 3 gestures: YES, NO, HELLO
+    //    Minimal conditions, no complex math.
     // ─────────────────────────────────────────────
 
     /**
-     * Recognize gesture from 21 hand landmarks.
-     * Returns a gesture key (e.g., 'hello') or null.
-     * Order: most specific patterns first → generic last.
+     * DEMO-OPTIMIZED gesture recognition.
+     * YES:   thumb extended, all others closed, thumb pointing up.
+     * NO:    all fingers closed (fist) — thumb ignored.
+     * HELLO: index + middle + ring + pinky extended (ignore thumb).
      */
     function recognizeGesture(landmarks) {
         if (!landmarks || landmarks.length < 21) return null;
@@ -186,47 +144,21 @@
         const ring   = isFingerExtended(landmarks, 'ring');
         const pinky  = isFingerExtended(landmarks, 'pinky');
 
-        const extendedCount = [thumb, index, middle, ring, pinky].filter(Boolean).length;
-        const thumbUp  = isThumbUp(landmarks);
-        const spread   = areFingersSpread(landmarks);
-        const together = areFingersTogether(landmarks);
+        const thumbUp = isThumbUp(landmarks);
 
-        // ── I Love You: thumb + index + pinky, NOT middle, NOT ring ──
-        if (thumb && index && !middle && !ring && pinky) {
-            return 'iloveyou';
-        }
-
-        // ── Peace: index + middle only (thumb may or may not be out) ──
-        if (index && middle && !ring && !pinky && extendedCount <= 3) {
-            return 'peace';
-        }
-
-        // ── Help: thumb + index only (two fingers, fist-like) ──
-        if (thumb && index && !middle && !ring && !pinky) {
-            return 'help';
-        }
-
-        // ── Yes: only thumb extended, pointing up ──
+        // ── YES: only thumb extended + pointing up ──
         if (thumb && !index && !middle && !ring && !pinky && thumbUp) {
             return 'yes';
         }
 
-        // ── No: only thumb extended, pointing down ──
-        if (thumb && !index && !middle && !ring && !pinky && !thumbUp) {
+        // ── HELLO: four fingers extended (ignore thumb state) ──
+        if (index && middle && ring && pinky) {
+            return 'hello';
+        }
+
+        // ── NO: closed fist — all four fingers closed (ignore thumb) ──
+        if (!index && !middle && !ring && !pinky) {
             return 'no';
-        }
-
-        // ── All five fingers extended ──
-        if (extendedCount === 5) {
-            if (together) {
-                return 'stop'; // Palm forward, fingers together
-            }
-            return 'hello'; // Open hand (spread or default)
-        }
-
-        // ── Thank You: four fingers extended (not thumb) ──
-        if (!thumb && index && middle && ring && pinky) {
-            return 'thankyou';
         }
 
         return null;
@@ -390,11 +322,12 @@
             }
         });
 
+        // DEMO-OPTIMIZED: lower thresholds for fast detection in poor conditions
         hands.setOptions({
             maxNumHands: 1,
-            modelComplexity: 1,
-            minDetectionConfidence: 0.7,
-            minTrackingConfidence: 0.5,
+            modelComplexity: 0,
+            minDetectionConfidence: 0.4,
+            minTrackingConfidence: 0.3,
         });
 
         hands.onResults(onHandResults);
@@ -620,7 +553,8 @@
     // 11. Demo Mode
     // ─────────────────────────────────────────────
 
-    const DEMO_SEQUENCE = ['hello', 'yes', 'thankyou', 'iloveyou', 'peace', 'stop', 'no', 'help'];
+    // DEMO-OPTIMIZED: only the 3 supported gestures
+    const DEMO_SEQUENCE = ['hello', 'yes', 'no'];
 
     function startDemo() {
         stopCamera(); // Stop camera first
