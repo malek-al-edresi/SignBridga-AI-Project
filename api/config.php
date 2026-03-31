@@ -13,7 +13,7 @@
  */
 
 // ─── DeepSeek API Configuration ───
-define('DEEPSEEK_API_KEY', 'YOUR_API_KEY_HERE');  // <-- Insert your API key here
+define('DEEPSEEK_API_KEY', 'sk-f8455753976a4cdbaf7ce27c648a0bcf');  // <-- Insert your real API key here (never commit it)
 define('DEEPSEEK_API_URL', 'https://api.deepseek.com/v1/chat/completions');
 define('DEEPSEEK_MODEL', 'deepseek-chat');
 

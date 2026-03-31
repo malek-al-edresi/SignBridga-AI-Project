@@ -49,16 +49,22 @@
         animationId: null,
         // Stabilization
         buffer: [],
-        bufferSize: 8,
-        requiredAgreement: 5,
+        bufferSize: 5,
+        requiredAgreement: 3,
         lastStableGesture: null,
         speechCooldown: false,
-        cooldownMs: 1800,
+        cooldownMs: 800,
         // Translated text
         words: [],
         // Demo
         demoInterval: null,
         demoIndex: 0,
+        // Auto-refine with DeepSeek
+        autoRefineTimer: null,
+        autoRefineDelayMs: 3000,
+        lastAutoRefineTime: 0,
+        lastAutoRefineText: '',
+        autoRefineMinIntervalMs: 10000,
     };
 
     // ─────────────────────────────────────────────
@@ -95,20 +101,27 @@
     }
 
     /**
+     * Compute palm size for distance normalization.
+     * Uses wrist (0) to middle-finger MCP (9) as reference.
+     */
+    function palmSize(landmarks) {
+        return dist(landmarks[0], landmarks[9]) || 0.001; // avoid div-by-zero
+    }
+
+    /**
      * Determine if a finger is extended.
-     * For thumb: compare TIP-to-wrist distance vs IP-to-wrist distance in x-axis (horizontal).
-     * For other fingers: compare TIP y < PIP y (in image coords, lower y = higher).
+     * For thumb: uses joint-chain direction (TIP farther from MCP than IP is from MCP).
+     * For other fingers: compare TIP y < PIP y.
      */
     function isFingerExtended(landmarks, finger) {
-        const wrist = landmarks[0];
-
         if (finger === 'thumb') {
-            const tip = landmarks[4];
-            const ip = landmarks[3];
+            const cmc = landmarks[1];
             const mcp = landmarks[2];
-            // Thumb is extended if tip is farther from palm center than ip
-            const tipDist = Math.abs(tip.x - wrist.x);
-            const ipDist = Math.abs(ip.x - wrist.x);
+            const ip  = landmarks[3];
+            const tip = landmarks[4];
+            // Thumb is extended when TIP is farther from CMC than IP is
+            const tipDist = dist(tip, cmc);
+            const ipDist  = dist(ip, cmc);
             return tipDist > ipDist;
         }
 
@@ -127,40 +140,32 @@
      */
     function isThumbUp(landmarks) {
         const thumbTip = landmarks[4];
-        const wrist = landmarks[0];
-        return thumbTip.y < wrist.y; // tip above wrist = up
+        const thumbMcp = landmarks[2];
+        return thumbTip.y < thumbMcp.y; // tip above MCP = up
     }
 
     /**
-     * Check if fingers are spread apart (for Hello/Open Hand).
+     * Check if fingers are spread apart (normalized by palm size).
      */
     function areFingersSpread(landmarks) {
-        const indexTip = landmarks[8];
-        const middleTip = landmarks[12];
-        const ringTip = landmarks[16];
-        const pinkyTip = landmarks[20];
+        const ps = palmSize(landmarks);
+        const d1 = dist(landmarks[8], landmarks[12]) / ps;
+        const d2 = dist(landmarks[12], landmarks[16]) / ps;
+        const d3 = dist(landmarks[16], landmarks[20]) / ps;
 
-        const d1 = dist(indexTip, middleTip);
-        const d2 = dist(middleTip, ringTip);
-        const d3 = dist(ringTip, pinkyTip);
-
-        return (d1 > 0.04 && d2 > 0.03 && d3 > 0.03);
+        return (d1 > 0.15 && d2 > 0.12 && d3 > 0.12);
     }
 
     /**
-     * Check if fingers are close together (for Stop gesture).
+     * Check if fingers are close together (normalized by palm size).
      */
     function areFingersTogether(landmarks) {
-        const indexTip = landmarks[8];
-        const middleTip = landmarks[12];
-        const ringTip = landmarks[16];
-        const pinkyTip = landmarks[20];
+        const ps = palmSize(landmarks);
+        const d1 = dist(landmarks[8], landmarks[12]) / ps;
+        const d2 = dist(landmarks[12], landmarks[16]) / ps;
+        const d3 = dist(landmarks[16], landmarks[20]) / ps;
 
-        const d1 = dist(indexTip, middleTip);
-        const d2 = dist(middleTip, ringTip);
-        const d3 = dist(ringTip, pinkyTip);
-
-        return (d1 < 0.06 && d2 < 0.06 && d3 < 0.06);
+        return (d1 < 0.22 && d2 < 0.22 && d3 < 0.22);
     }
 
     // ─────────────────────────────────────────────
@@ -170,19 +175,20 @@
     /**
      * Recognize gesture from 21 hand landmarks.
      * Returns a gesture key (e.g., 'hello') or null.
+     * Order: most specific patterns first → generic last.
      */
     function recognizeGesture(landmarks) {
         if (!landmarks || landmarks.length < 21) return null;
 
-        const thumb = isFingerExtended(landmarks, 'thumb');
-        const index = isFingerExtended(landmarks, 'index');
+        const thumb  = isFingerExtended(landmarks, 'thumb');
+        const index  = isFingerExtended(landmarks, 'index');
         const middle = isFingerExtended(landmarks, 'middle');
-        const ring = isFingerExtended(landmarks, 'ring');
-        const pinky = isFingerExtended(landmarks, 'pinky');
+        const ring   = isFingerExtended(landmarks, 'ring');
+        const pinky  = isFingerExtended(landmarks, 'pinky');
 
         const extendedCount = [thumb, index, middle, ring, pinky].filter(Boolean).length;
-        const thumbUp = isThumbUp(landmarks);
-        const spread = areFingersSpread(landmarks);
+        const thumbUp  = isThumbUp(landmarks);
+        const spread   = areFingersSpread(landmarks);
         const together = areFingersTogether(landmarks);
 
         // ── I Love You: thumb + index + pinky, NOT middle, NOT ring ──
@@ -190,9 +196,14 @@
             return 'iloveyou';
         }
 
-        // ── Peace: index + middle only ──
-        if (!thumb && index && middle && !ring && !pinky) {
+        // ── Peace: index + middle only (thumb may or may not be out) ──
+        if (index && middle && !ring && !pinky && extendedCount <= 3) {
             return 'peace';
+        }
+
+        // ── Help: thumb + index only (two fingers, fist-like) ──
+        if (thumb && index && !middle && !ring && !pinky) {
+            return 'help';
         }
 
         // ── Yes: only thumb extended, pointing up ──
@@ -205,32 +216,17 @@
             return 'no';
         }
 
-        // ── Help: thumb + fist-like (only thumb clearly out, maybe index slightly) ──
-        if (thumb && !middle && !ring && !pinky && !index) {
-            // Already handled by yes/no above; this is a fallback
-            return thumbUp ? 'yes' : 'no';
-        }
-
         // ── All five fingers extended ──
         if (extendedCount === 5) {
-            if (spread) {
-                return 'hello'; // Open hand with spread fingers
-            }
             if (together) {
                 return 'stop'; // Palm forward, fingers together
             }
-            // Default: if all extended, check wrist position for stop vs hello
-            return 'hello';
+            return 'hello'; // Open hand (spread or default)
         }
 
-        // ── Thank You: four fingers extended (not thumb), together ──
+        // ── Thank You: four fingers extended (not thumb) ──
         if (!thumb && index && middle && ring && pinky) {
             return 'thankyou';
-        }
-
-        // ── Help: fist with thumb out to the side ──
-        if (thumb && !index && !middle && !ring && !pinky) {
-            return thumbUp ? 'yes' : 'no';
         }
 
         return null;
@@ -425,7 +421,7 @@
                 setDetectionStatus('Hand detected', true);
             }
 
-            // Process stable gesture
+            // Process stable gesture — only once per new gesture, with cooldown
             if (stableGesture && stableGesture !== state.lastStableGesture && !state.speechCooldown) {
                 state.lastStableGesture = stableGesture;
 
@@ -434,6 +430,7 @@
                     addToTranslatedText(g.label);
                     addToSpeechLog(g.label);
                     speak(g.label);
+                    scheduleAutoRefine();
 
                     // Cooldown to prevent rapid repeats
                     state.speechCooldown = true;
@@ -701,9 +698,47 @@
     }
 
     // ─────────────────────────────────────────────
-    // 13. DeepSeek AI Refinement (Optional)
+    // 13. DeepSeek AI Refinement (with auto-trigger)
     // ─────────────────────────────────────────────
 
+    /**
+     * Schedule an automatic DeepSeek call after a debounce delay.
+     * Resets timer on each new gesture so we wait for a pause.
+     */
+    function scheduleAutoRefine() {
+        if (state.autoRefineTimer) {
+            clearTimeout(state.autoRefineTimer);
+        }
+        state.autoRefineTimer = setTimeout(() => {
+            state.autoRefineTimer = null;
+            autoRefineWithAI();
+        }, state.autoRefineDelayMs);
+    }
+
+    /**
+     * Auto-triggered refinement. Has throttle guard:
+     * - At least autoRefineMinIntervalMs between auto-calls
+     * - Skip if text hasn't changed since last call
+     */
+    function autoRefineWithAI() {
+        if (state.words.length === 0) return;
+
+        const text = state.words.join(' ');
+        const now = Date.now();
+
+        if (text === state.lastAutoRefineText) return; // nothing new
+        if (now - state.lastAutoRefineTime < state.autoRefineMinIntervalMs) return; // throttled
+
+        state.lastAutoRefineTime = now;
+        state.lastAutoRefineText = text;
+        refineWithAI();
+    }
+
+    /**
+     * Core refine function — called manually (button) or automatically.
+     * Sends recognized text to PHP backend proxy.
+     * Expects response: { success, result, raw, error }
+     */
     async function refineWithAI() {
         if (state.words.length === 0) return;
 
@@ -718,22 +753,25 @@
                 body: JSON.stringify({ text: text }),
             });
 
-            if (!response.ok) throw new Error('API request failed');
-
             const data = await response.json();
 
-            if (data.refined) {
+            if (data.success && data.result) {
                 DOM.refinedOutput.innerHTML = `
-                    <strong>Refined:</strong> ${escapeHTML(data.refined)}
-                    ${data.explanation ? `<br><small style="color:var(--clr-text-dim)">${escapeHTML(data.explanation)}</small>` : ''}
+                    <strong>AI Refined:</strong> ${escapeHTML(data.result)}
+                    ${data.raw && data.raw !== data.result ? `<br><small style="color:var(--clr-text-dim)">Original: ${escapeHTML(data.raw)}</small>` : ''}
                 `;
                 DOM.refinedOutput.classList.add('visible');
             } else if (data.error) {
-                DOM.refinedOutput.innerHTML = `<span style="color:var(--clr-warning);">⚠️ ${escapeHTML(data.error)}</span>`;
+                // Show fallback: raw text + error message
+                DOM.refinedOutput.innerHTML = `
+                    <span style="color:var(--clr-warning);">⚠️ ${escapeHTML(data.error)}</span>
+                    <br><small style="color:var(--clr-text-dim)">Recognized text: "${escapeHTML(data.raw || text)}"</small>
+                `;
                 DOM.refinedOutput.classList.add('visible');
             }
         } catch (err) {
-            DOM.refinedOutput.innerHTML = `<span style="color:var(--clr-text-dim);">AI refinement unavailable. The raw text is: "${escapeHTML(text)}"</span>`;
+            // Network error / PHP not available — show fallback
+            DOM.refinedOutput.innerHTML = `<span style="color:var(--clr-text-dim);">AI refinement unavailable. Recognized text: "${escapeHTML(text)}"</span>`;
             DOM.refinedOutput.classList.add('visible');
         } finally {
             DOM.refineBtn.disabled = false;

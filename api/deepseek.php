@@ -4,7 +4,7 @@
  * 
  * Accepts POST requests with JSON body: { "text": "Hello Thank You" }
  * Forwards the text to DeepSeek API for grammar/sentence refinement.
- * Returns JSON: { "refined": "...", "explanation": "..." }
+ * Returns JSON: { "success": bool, "result": "...", "raw": "...", "error": null|"..." }
  * 
  * This endpoint is OPTIONAL — the frontend works fully without it.
  * It exists to demonstrate secure server-side API key handling.
@@ -28,7 +28,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 // ─── Only accept POST ───
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
-    echo json_encode(['error' => 'Method not allowed. Use POST.']);
+    echo json_encode([
+        'success' => false,
+        'result'  => null,
+        'raw'     => null,
+        'error'   => 'Method not allowed. Use POST.',
+    ]);
     exit;
 }
 
@@ -38,7 +43,12 @@ $input = json_decode($rawInput, true);
 
 if (!$input || !isset($input['text']) || !is_string($input['text'])) {
     http_response_code(400);
-    echo json_encode(['error' => 'Invalid input. Expected JSON with a "text" field.']);
+    echo json_encode([
+        'success' => false,
+        'result'  => null,
+        'raw'     => null,
+        'error'   => 'Invalid input. Expected JSON with a "text" field.',
+    ]);
     exit;
 }
 
@@ -49,13 +59,23 @@ $text = preg_replace('/[\x00-\x1F\x7F]/u', '', $text);
 
 if (strlen($text) === 0) {
     http_response_code(400);
-    echo json_encode(['error' => 'Text cannot be empty.']);
+    echo json_encode([
+        'success' => false,
+        'result'  => null,
+        'raw'     => null,
+        'error'   => 'Text cannot be empty.',
+    ]);
     exit;
 }
 
 if (strlen($text) > MAX_INPUT_LENGTH) {
     http_response_code(400);
-    echo json_encode(['error' => 'Text exceeds maximum length of ' . MAX_INPUT_LENGTH . ' characters.']);
+    echo json_encode([
+        'success' => false,
+        'result'  => null,
+        'raw'     => $text,
+        'error'   => 'Text exceeds maximum length of ' . MAX_INPUT_LENGTH . ' characters.',
+    ]);
     exit;
 }
 
@@ -63,8 +83,10 @@ if (strlen($text) > MAX_INPUT_LENGTH) {
 if (DEEPSEEK_API_KEY === 'YOUR_API_KEY_HERE' || empty(DEEPSEEK_API_KEY)) {
     // Return a helpful fallback instead of failing silently
     echo json_encode([
-        'refined' => $text,
-        'explanation' => 'AI refinement is not configured. The original text is shown. To enable AI, add your DeepSeek API key to api/config.php.'
+        'success' => true,
+        'result'  => $text,
+        'raw'     => $text,
+        'error'   => null,
     ]);
     exit;
 }
@@ -73,7 +95,7 @@ if (DEEPSEEK_API_KEY === 'YOUR_API_KEY_HERE' || empty(DEEPSEEK_API_KEY)) {
 $systemPrompt = 'You are a helpful assistant that refines sign language gesture sequences into natural, grammatically correct English sentences. '
     . 'The input is a series of gesture labels detected from sign language (e.g., "Hello Thank You Yes"). '
     . 'Your job is to convert them into a natural sentence. Keep it concise. '
-    . 'Also provide a one-line explanation of how you refined it.';
+    . 'Return ONLY the refined sentence, nothing else.';
 
 $payload = json_encode([
     'model' => DEEPSEEK_MODEL,
@@ -107,8 +129,10 @@ $response = @file_get_contents(DEEPSEEK_API_URL, false, $context);
 if ($response === false) {
     http_response_code(502);
     echo json_encode([
-        'error' => 'Failed to reach DeepSeek API. The service may be temporarily unavailable.',
-        'refined' => $text,
+        'success' => false,
+        'result'  => $text,
+        'raw'     => $text,
+        'error'   => 'Failed to reach DeepSeek API. The service may be temporarily unavailable.',
     ]);
     exit;
 }
@@ -117,33 +141,29 @@ $data = json_decode($response, true);
 
 if (!$data || !isset($data['choices'][0]['message']['content'])) {
     // Return raw text as fallback
-    http_response_code(200);
     echo json_encode([
-        'refined' => $text,
-        'explanation' => 'AI returned an unexpected response. Showing original text.',
+        'success' => true,
+        'result'  => $text,
+        'raw'     => $text,
+        'error'   => null,
     ]);
     exit;
 }
 
 $aiResponse = trim($data['choices'][0]['message']['content']);
 
-// Try to parse structured response: "Refined: ... Explanation: ..."
+// Clean up common AI response artifacts (quotes, "Refined:" prefix, etc.)
 $refined = $aiResponse;
-$explanation = '';
+$refined = preg_replace('/^(?:refined|sentence)[:\s]*/i', '', $refined);
+$refined = trim($refined, ' "\'.');
 
-if (preg_match('/(?:refined|sentence)[:\s]*(.+?)(?:\n|explanation|$)/i', $aiResponse, $m)) {
-    $refined = trim($m[1], ' "\'.');
-}
-if (preg_match('/explanation[:\s]*(.+)/i', $aiResponse, $m)) {
-    $explanation = trim($m[1], ' "\'.');
-}
-
-// If parsing didn't extract cleanly, use the whole response
 if (empty($refined)) {
-    $refined = $aiResponse;
+    $refined = $text; // fallback to original
 }
 
 echo json_encode([
-    'refined' => $refined,
-    'explanation' => $explanation,
+    'success' => true,
+    'result'  => $refined,
+    'raw'     => $text,
+    'error'   => null,
 ]);
